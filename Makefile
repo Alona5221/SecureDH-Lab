@@ -13,7 +13,7 @@ keygen: src/keygen.c src/common.c
 	$(CC) $(CFLAGS) -o $@ $^
 test_crypto: tests/test_crypto.c $(LIBSRC)
 	$(CC) $(CFLAGS) -o $@ $^
-test_protocol: tests/test_protocol.c
+test_protocol: tests/test_protocol.c $(LIBSRC)
 	$(CC) $(CFLAGS) -o $@ $^
 test: all test_crypto test_protocol
 	./test_crypto

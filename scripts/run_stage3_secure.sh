@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p logs
+rm -f logs/*.log
 ./keygen --psk-file psk.bin --bytes 32
 ./server --host 0.0.0.0 --port 9000 --mode secure --psk-file psk.bin --log logs/server.log & SPID=$!
 sleep 1

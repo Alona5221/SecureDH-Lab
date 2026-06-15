@@ -1,8 +1,8 @@
 # SecureDH-Lab
 
-SecureDH-Lab 是“网络空间安全设计与实践 I”课程设计原型，演示 POSIX TCP Socket、pthread 多客户端服务端、实验型 Diffie-Hellman 密钥协商、AES-256-GCM 风格认证加密传输、DH 中间人攻击，以及使用 PSK + HMAC-SHA256 认证握手后抵抗中间人攻击的效果。
+SecureDH-Lab 是“网络空间安全设计与实践 I”课程设计原型，演示 POSIX TCP Socket、pthread 多客户端服务端、实验型 Diffie-Hellman 密钥协商、AES-256-GCM 认证加密传输、DH 中间人攻击，以及使用 PSK + HMAC-SHA256 认证握手后抵抗中间人攻击的效果。
 
-> 重要说明：本项目只用于本地课程实验与课堂讲解，不用于真实生产安全系统。DH 使用 `uint64_t` 实验参数；项目未依赖 OpenSSL/libsodium/mbedTLS/Crypto++ 等第三方密码库。
+> 重要说明：本项目只用于本地课程实验与课堂讲解，不用于真实生产安全系统。DH 使用 `uint64_t` 实验参数；项目未依赖任何第三方密码学库。
 
 ## 四个阶段
 
@@ -77,12 +77,24 @@ scripts/run_stage3_secure.sh
 ./mitm --listen-port 9001 --target-host 127.0.0.1 --target-port 9000 --mode attack --daemon --log logs/mitm.log
 ```
 
+## AES-256-GCM 实现说明
+
+`src/aes.c` 实现标准 AES-256 block encryption：S-box、Rcon、AES-256 KeyExpansion、AddRoundKey、SubBytes、ShiftRows、MixColumns 和 14 轮加密。`src/gcm.c` 实现标准 GCM：`H = AES_K(0^128)`、96-bit nonce 的 `J0 = nonce || 1`、从 `inc32(J0)` 开始的 CTR、GF(2^128) GHASH、长度块和 `AES_K(J0) XOR GHASH` tag。`make test` 使用 AES-256 与 AES-256-GCM 标准向量验证实现。
+
 ## 密钥周期性更新示例
 
-命令行已接受参数，日志会在触发重新握手设计点输出 rekey 信息；课程演示可使用：
+client 和 server 支持 `--rekey-sec N`、`--rekey-msg N`；client 还支持 `--repeat N` 和 `--interval MS` 便于连续发送并触发 rekey。
 
 ```bash
-./server --host 0.0.0.0 --port 9000 --mode secure --psk-file psk.bin --rekey-sec 30 --rekey-msg 5
+./keygen --psk-file psk.bin --bytes 32
+./server --host 0.0.0.0 --port 9000 --mode secure --psk-file psk.bin --rekey-msg 3 --log logs/server.log
+./client --host 127.0.0.1 --port 9000 --mode secure --psk-file psk.bin --message "rekey demo" --repeat 8 --interval 300 --rekey-msg 3
+```
+
+或运行：
+
+```bash
+scripts/run_rekey_demo.sh
 ```
 
 ## 目录结构

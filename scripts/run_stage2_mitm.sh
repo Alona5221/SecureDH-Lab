@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p logs
+rm -f logs/*.log
 ./server --host 0.0.0.0 --port 9000 --mode weak --log logs/server.log & SPID=$!
 sleep 1
 ./mitm --listen-port 9001 --target-host 127.0.0.1 --target-port 9000 --mode attack --log logs/mitm.log & MPID=$!
