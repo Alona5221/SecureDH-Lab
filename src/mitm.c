@@ -1,0 +1,14 @@
+#include "common.h"
+#include "net.h"
+#include "dh.h"
+#include "protocol.h"
+#include "kdf.h"
+#include "gcm.h"
+#include "log.h"
+#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+int main(int argc,char**argv){int lp=9001,tp=9000,daemon=0,verbose=0;const char*th="127.0.0.1",*logp=NULL;static struct option opts[]={{"listen-port",1,0,'l'},{"target-host",1,0,'h'},{"target-port",1,0,'p'},{"mode",1,0,'m'},{"verbose",0,0,'v'},{"daemon",0,0,'d'},{"log",1,0,'g'},{0,0,0,0}};int c;while((c=getopt_long(argc,argv,"",opts,NULL))!=-1){if(c=='l')lp=atoi(optarg);else if(c=='h')th=optarg;else if(c=='p')tp=atoi(optarg);else if(c=='v')verbose=1;else if(c=='d')daemon=1;else if(c=='g')logp=optarg;}if(daemon)daemonize_process(logp);log_set_verbose(verbose);if(logp&&!daemon)log_set_file(logp);int lfd=tcp_listen("0.0.0.0",(uint16_t)lp,4);if(lfd<0){perror("listen");return 1;}int cfd=accept(lfd,NULL,NULL);log_info("[mitm] client connected");int sfd=tcp_connect(th,(uint16_t)tp);if(sfd<0){perror("connect target");return 1;}log_info("[mitm] connected to real server");uint16_t type;uint32_t fl,seq,len;uint8_t*p=NULL;recv_msg(cfd,&type,&fl,&seq,&p,&len);client_hello_t ch_c;decode_client_hello(p,len,&ch_c);uint8_t chcb[28];memcpy(chcb,p,28);free(p);uint64_t pc=dh_generate_private();server_hello_t fake={SDH_VERSION,dh_compute_public(pc),{0},{0}};random_bytes(fake.nonce,16);uint8_t shfb[58];encode_server_hello(shfb,&fake);send_msg(cfd,MSG_SERVER_HELLO,0,2,shfb,58);if(ch_c.mode==MODE_SECURE){log_info("[mitm] attack failed: cannot forge authenticated DH transcript");close(cfd);close(sfd);return 2;}log_info("[mitm] established DH key with client");client_hello_t ch_s={SDH_VERSION,MODE_WEAK,dh_compute_public(dh_generate_private()),{0}};uint64_t ps=dh_generate_private();ch_s.dh_public=dh_compute_public(ps);random_bytes(ch_s.nonce,16);uint8_t chsb[28];encode_client_hello(chsb,&ch_s);send_msg(sfd,MSG_CLIENT_HELLO,0,1,chsb,28);recv_msg(sfd,&type,&fl,&seq,&p,&len);server_hello_t real;decode_server_hello(p,len,&real);free(p);log_info("[mitm] established DH key with server");uint8_t kc[32],ks[32];derive_session_key(dh_compute_shared(ch_c.dh_public,pc),ch_c.nonce,fake.nonce,"SecureDH-Lab session",kc);derive_session_key(dh_compute_shared(real.dh_public,ps),ch_s.nonce,real.nonce,"SecureDH-Lab session",ks);recv_msg(cfd,&type,&fl,&seq,&p,&len);uint8_t*pt=malloc(len-28+1);if(aes256_gcm_decrypt(kc,p,chcb,28,p+28,len-28,p+12,pt)){log_error("mitm decrypt failed");return 1;}pt[len-28]=0;log_info("[mitm] decrypted client plaintext: %s",pt);uint8_t nonce[12],tag[16],*ct=malloc(len-28),*dp=malloc(len);random_bytes(nonce,12);aes256_gcm_encrypt(ks,nonce,chsb,28,pt,len-28,ct,tag);memcpy(dp,nonce,12);memcpy(dp+12,tag,16);memcpy(dp+28,ct,len-28);send_msg(sfd,MSG_DATA,0,4,dp,len);log_info("[mitm] re-encrypted and forwarded message to server");free(p);free(pt);free(ct);free(dp);close(cfd);close(sfd);return 0;}

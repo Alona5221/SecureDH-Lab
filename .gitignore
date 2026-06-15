@@ -1,0 +1,9 @@
+server
+client
+mitm
+keygen
+test_crypto
+test_protocol
+*.o
+psk.bin
+logs/*.log
